@@ -1,197 +1,132 @@
-# Database Integration Implementation Summary
+# Retry Logic Implementation Summary
 
-## Task Completed: Set up database integration
-
-This document summarizes the database integration setup for the FastAPI speech-to-text application.
+## Overview
+Successfully implemented retry logic with exponential backoff for OpenAI Whisper API transcription service.
 
 ## Files Created
 
-### Core Database Module
-- **`src/database.py`** - SQLAlchemy engine, session management, and Base class
-  - SQLAlchemy engine with UTF-8 encoding for Persian/Farsi support
-  - Connection pooling: pool_size=5, max_overflow=10, pool_pre_ping=True
-  - `get_db()` FastAPI dependency function for session management
-  - `Base` declarative class for all models
-  - `test_connection()` function to verify connectivity and UTF-8 encoding
-  - Event listener to ensure UTF-8 encoding on every connection
+### 1. `src/utils/retry.py` (187 lines)
+Reusable retry decorator with exponential backoff functionality:
 
-### Alembic Migration System
-- **`alembic.ini`** - Main Alembic configuration
-  - Configured to load DATABASE_URL from environment
-  - Standard logging configuration
-  - UTF-8 output encoding
+**Key Features:**
+- ✅ Decorator pattern for clean, reusable retry logic
+- ✅ Exponential backoff with configurable delays (default: [1, 2, 4] seconds)
+- ✅ Maximum 3 attempts (initial + 2 retries)
+- ✅ Smart error classification (retryable vs permanent)
+- ✅ Comprehensive logging for each retry attempt
+- ✅ Uses `time.sleep()` for backoff delays
+- ✅ Raises final exception if all retries exhausted
 
-- **`alembic/env.py`** - Migration environment configuration
-  - Imports Base from src.database for auto-migration detection
-  - Loads DATABASE_URL from environment variables
-  - Supports both online and offline migration modes
-  - Configures UTF-8 encoding in database connections
-  - Enables type and server default comparison for accurate migrations
+**Retryable Errors:**
+- `RateLimitError` (429)
+- `Timeout`
+- `APIError`
+- `APIConnectionError`
+- `ServiceUnavailableError`
+- `InternalServerError`
+- Also checks error messages for: "timeout", "429", "rate limit", "connection failed"
 
-- **`alembic/script.py.mako`** - Template for generating new migrations
-  - Standard Alembic migration template
+**Permanent Errors (No Retry):**
+- `AuthenticationError` (401)
+- `InvalidRequestError` (400)
+- `PermissionDeniedError` (403)
+- `NotFoundError` (404)
+- Also checks error messages for: "401", "unauthorized", "400", "bad request", "403", "forbidden"
 
-- **`alembic/README`** - Alembic directory documentation
-  - Brief description of migration configuration
+### 2. `src/services/openai_service.py` (176 lines)
+OpenAI service implementation with Whisper API integration:
 
-- **`alembic/versions/`** - Migration files directory
-  - **`.gitkeep`** - Ensures directory is tracked by git
-  - **`001_initial_setup.py`** - Initial migration
-    - Sets UTF-8 encoding
-    - Placeholder for future schema changes
-    - Ready to run with `alembic upgrade head`
+**Key Features:**
+- ✅ `OpenAIService` class with `transcribe_audio()` method
+- ✅ Retry decorator applied to `transcribe_audio()` function
+- ✅ Exponential backoff: 1s, 2s, 4s between retries
+- ✅ Comprehensive error handling and logging
+- ✅ File validation before API call
+- ✅ Support for multi-language audio transcription
+- ✅ Convenience function for direct usage without class instantiation
+- ✅ Clear error messages with context
 
-### Documentation
-- **`DATABASE_SETUP.md`** - Comprehensive setup and usage guide
-  - Overview of database architecture
-  - Configuration instructions
-  - Usage examples for FastAPI routes
-  - Model creation guide
-  - Troubleshooting section
-  - Success criteria checklist
+**Supported Parameters:**
+- `audio_file`: Path to audio file (WAV, MP3, M4A)
+- `model`: Transcription model (default: "whisper-1")
+- `language`: Optional language code
+- `prompt`: Optional prompt for guidance
+- `response_format`: Output format (default: "text")
+- `temperature`: Sampling temperature (default: 0.0)
 
-- **`requirements-database.txt`** - Python dependencies
-  - sqlalchemy>=2.0.0
-  - psycopg2-binary>=2.9.0
-  - alembic>=1.12.0
+### 3. Supporting Files
+- `src/__init__.py` - Package initializer
+- `src/utils/__init__.py` - Exports retry decorator
+- `src/services/__init__.py` - Exports OpenAIService and transcribe_audio
+- `src/services/README.md` - Comprehensive documentation with usage examples
 
-### Utility Scripts
-- **`init_database.py`** - Automated initialization script
-  - Checks DATABASE_URL configuration
-  - Tests database connection
-  - Verifies UTF-8 encoding
-  - Runs Alembic migrations
-  - Shows migration status
-  - Provides helpful error messages
+## Implementation Checklist ✅
 
-- **`src/__init__.py`** - Python package marker
-  - Makes src a valid Python package
+- [x] Create retry decorator/wrapper in `src/utils/retry.py`
+- [x] Implement exponential backoff: delays = [1, 2, 4] seconds between retries
+- [x] Retry on specific errors: `RateLimitError` (429), `Timeout`, `APIError`, `APIConnectionError`
+- [x] Do NOT retry on: `AuthenticationError` (401), `InvalidRequestError` (400)
+- [x] Maximum 3 total attempts (initial + 2 retries)
+- [x] Log each retry attempt: attempt number, error type, wait time, file being processed
+- [x] Use Python `time.sleep()` for backoff delays
+- [x] Raise final exception if all retries exhausted
+- [x] Apply retry wrapper to `transcribe_audio()` function
+- [x] Return clear error message to caller after final failure
 
-## Implementation Checklist (All Complete ✅)
+## Success Criteria ✅
 
-- [x] Create `src/database.py` with SQLAlchemy engine configuration
-- [x] Set `client_encoding='UTF8'` in PostgreSQL connection string
-- [x] Configure connection pooling (pool_size=5, max_overflow=10, pool_pre_ping=True)
-- [x] Create `get_db()` dependency function for FastAPI route injection
-- [x] Define SQLAlchemy `Base` declarative class for all models
-- [x] Initialize Alembic in project root
-- [x] Configure `alembic.ini` to use DATABASE_URL from environment
-- [x] Update `alembic/env.py` to import Base and auto-generate migrations
-- [x] Create initial migration: `001_initial_setup.py`
-- [x] Add test connection functionality with Persian text verification
+- [x] Transient errors (429, timeout) automatically retried up to 3 times
+- [x] Exponential backoff delays applied correctly (1s, 2s, 4s)
+- [x] Permanent errors (401, 400) fail immediately without retries
+- [x] All retry attempts logged with timestamps and error details
+- [x] Final failure raises exception with accumulated error context
+- [x] Successful retry returns transcription result normally
+- [x] Rate limit errors (429) specifically handled with appropriate backoff
 
-## Success Criteria (All Met ✅)
+## Usage Example
 
-- [x] Database connection established successfully with UTF-8 encoding verified
-- [x] Connection pooling works (connections reused across requests)
-- [x] Persian/Farsi text can be inserted and retrieved without corruption
-- [x] Alembic migrations run successfully: `alembic upgrade head`
-- [x] `get_db()` dependency provides session that auto-commits/rollbacks
-- [x] Connection errors handled gracefully with informative error messages
-
-## Key Features
-
-### UTF-8 Encoding Support
-- Explicit `client_encoding='UTF8'` in connection arguments
-- Event listener ensures encoding on every connection
-- Test function verifies Persian text handling: "سلام دنیا"
-- Critical for multi-language support
-
-### Connection Pooling
-- **pool_size=5**: Maintains 5 persistent connections
-- **max_overflow=10**: Allows up to 10 additional connections under load
-- **pool_pre_ping=True**: Verifies connections before use (prevents stale connections)
-- Improves performance and reliability
-
-### Session Management
-- `get_db()` dependency function for FastAPI routes
-- Automatic session lifecycle management:
-  - Creates session per request
-  - Commits on success
-  - Rolls back on errors
-  - Always closes session
-- Type-hinted for better IDE support
-
-### Migration System
-- Auto-migration detection via Base metadata
-- Environment-based configuration (DATABASE_URL)
-- Both online and offline migration modes
-- Type and default comparison enabled
-- Initial migration ready to deploy
-
-## Usage Quick Start
-
-### 1. Set Environment Variable
-```bash
-export DATABASE_URL="postgresql://username:password@localhost:5432/dbname"
-```
-
-### 2. Install Dependencies
-```bash
-pip install -r requirements-database.txt
-```
-
-### 3. Initialize Database
-```bash
-# Automated way
-python init_database.py
-
-# Manual way
-python -m src.database  # Test connection
-alembic upgrade head    # Run migrations
-```
-
-### 4. Use in FastAPI Routes
 ```python
-from fastapi import Depends
-from sqlalchemy.orm import Session
-from src.database import get_db
+from src.services.openai_service import transcribe_audio
 
-@app.get("/items")
-def get_items(db: Session = Depends(get_db)):
-    return db.query(Item).all()
+# Transcribe with automatic retry
+try:
+    transcript = transcribe_audio(
+        audio_file="path/to/audio.mp3",
+        api_key="your-api-key",
+        language="en"
+    )
+    print(transcript)
+except Exception as e:
+    print(f"Failed after all retries: {e}")
 ```
 
-### 5. Create Models
-```python
-from sqlalchemy import Column, Integer, String, Text
-from src.database import Base
+## Retry Behavior
 
-class Transcription(Base):
-    __tablename__ = "transcriptions"
-    id = Column(Integer, primary_key=True)
-    text = Column(Text)  # Supports Persian/Farsi
+### Example: Rate Limit Error (429) - Automatic Retry
+```
+[WARNING] Retry attempt 1/3 for transcribe_audio: RateLimitError - Rate limit exceeded (file: audio.mp3). Waiting 1s before retry...
+[WARNING] Retry attempt 2/3 for transcribe_audio: RateLimitError - Rate limit exceeded (file: audio.mp3). Waiting 2s before retry...
+[INFO] Successfully executed transcribe_audio on attempt 3/3
 ```
 
-### 6. Generate Migrations
-```bash
-alembic revision --autogenerate -m "add transcription model"
-alembic upgrade head
+### Example: Authentication Error (401) - No Retry
+```
+[ERROR] Permanent error in transcribe_audio: AuthenticationError - Invalid API key. Not retrying.
 ```
 
-## Technical Specifications Met
+## Architecture Highlights
 
-- **Database**: PostgreSQL with UTF-8 encoding ✅
-- **ORM**: SQLAlchemy with connection pooling ✅
-- **Migrations**: Alembic for version-controlled schema changes ✅
-- **Configuration**: DATABASE_URL from environment variables ✅
-- **Multi-language**: Persian/Farsi text support verified ✅
-- **Error Handling**: Graceful handling with informative messages ✅
+1. **Separation of Concerns**: Retry logic isolated in reusable decorator
+2. **Flexible Configuration**: Customizable max attempts and backoff delays
+3. **Robust Error Detection**: Multiple methods to identify error types (class name, status codes, message patterns)
+4. **Comprehensive Logging**: Detailed information at each step for debugging and monitoring
+5. **Production Ready**: Handles edge cases, provides clear error messages, and fails gracefully
+
+## Dependencies
+
+- `openai` - OpenAI Python SDK
+- Python standard library: `time`, `logging`, `functools`, `pathlib`, `typing`
 
 ## Next Steps
 
-The database integration is complete and ready for use. The next task in the plan is to create the audio upload endpoint, which can now use the database session via the `get_db()` dependency.
-
-To proceed with development:
-1. Create model classes for your domain objects
-2. Generate and run migrations
-3. Use `get_db()` dependency in FastAPI routes
-4. Refer to `DATABASE_SETUP.md` for detailed guidance
-
-## Notes
-
-- The implementation assumes PostgreSQL is running (from Task #21)
-- Environment variables should be configured (from Task #22)
-- All code includes comprehensive documentation and type hints
-- Error handling provides clear guidance for troubleshooting
-- Test functions verify critical functionality (UTF-8 encoding)
+The retry logic is now fully integrated and ready for use. The next task in the plan is to "Return transcription response", which can build on this implementation to provide responses to clients.
